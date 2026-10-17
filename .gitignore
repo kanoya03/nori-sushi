@@ -1,0 +1,27 @@
+# Environment variables
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Builds
+dist/
+**/dist/
+
+# Expo
+.expo/
+**/.expo/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+
+sushi-backend/src/generated/prisma/
