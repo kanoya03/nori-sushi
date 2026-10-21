@@ -74,3 +74,94 @@ nori-sushi/
 ├── sushi-delivery/   # React Native / Expo mobile app
 ├── sushi-backend/    # NestJS backend
 └── README.md
+```
+
+## Backend
+
+The backend is deployed on Render:
+
+https://nori-sushi.onrender.com
+
+Example public endpoint:
+
+https://nori-sushi.onrender.com/products
+
+Because the backend uses a free Render instance, the first request after a period of inactivity may take longer while the service wakes up.
+
+## Android Installation
+
+Download the latest release from the Releases section.
+
+Use:
+
+- `NORI-SUSHI-arm64.apk` for most modern Android devices
+- `NORI-SUSHI-universal.apk` if you are unsure about your device architecture
+
+Android may ask you to allow installation from unknown sources because the demo is distributed outside Google Play.
+
+## Local Development
+
+### Backend
+
+```bash
+cd sushi-backend
+npm install
+npm run start:dev
+```
+
+### Mobile
+
+```bash
+cd sushi-delivery
+npm install
+npx expo start --dev-client
+```
+
+The mobile application requires environment variables for:
+
+- backend API
+- Mapbox
+- Google authentication
+
+## Architecture
+
+```text
+React Native / Expo
+        |
+        | HTTPS
+        v
+NestJS REST API
+        |
+        v
+Prisma ORM
+        |
+        v
+Neon PostgreSQL
+```
+
+External services include:
+
+- Google Sign-In
+- Telegram Bot API
+- Mapbox
+
+## Languages
+
+The application supports:
+
+- English
+- Russian
+
+The app automatically detects the device language and also allows manual language switching.
+
+## Screenshots
+
+Screenshots will be added here.
+
+## Status
+
+Portfolio demo — Android version completed.
+
+## Author
+
+Arsen Esenbolatov
