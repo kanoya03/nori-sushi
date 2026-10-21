@@ -156,7 +156,24 @@ The app automatically detects the device language and also allows manual languag
 
 ## Screenshots
 
-Screenshots will be added here.
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/home.jpg" width="220" />
+  <img src="screenshots/product.jpg" width="220" />
+  <img src="screenshots/cart.jpg" width="220" />
+</p>
+
+<p align="center">
+  <img src="screenshots/delivery.jpg" width="220" />
+  <img src="screenshots/pickup.jpg" width="220" />
+  <img src="screenshots/checkout.jpg" width="220" />
+</p>
+
+<p align="center">
+  <img src="screenshots/orders.jpg" width="220" />
+  <img src="screenshots/order-details.jpg" width="220" />
+</p>
 
 ## Status
 
