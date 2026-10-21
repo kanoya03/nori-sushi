@@ -6,12 +6,17 @@ The project includes a mobile client, authentication, product catalog, favorites
 
 ## Demo
 
-Android demo APKs are available in GitHub Releases.
+Android demo builds are available in GitHub Releases:
 
-- Universal APK — compatible with more Android devices
-- ARM64 APK — smaller build for modern ARM64 Android devices
+https://github.com/kanoya03/nori-sushi/releases/latest
+
+Available builds:
+
+- `NORI-SUSHI-arm64.apk` — recommended for most modern Android devices
+- `NORI-SUSHI-universal.apk` — compatible with a wider range of Android devices
 
 > This is a portfolio/demo project and is not published on Google Play.
+
 
 ## Features
 
