@@ -137,7 +137,7 @@ async function main() {
       weight: '250 г',
 
       imageUrl:
-        'https://images.unsplash.com/photo-1579871494447-9811cf80d66c',
+        'https://tako-sushi.mk.ua/wp-content/uploads/2024/01/rol%D1%8B-800h800-filadelfiya.jpg',
 
       categoryId:
         rolls.id,
@@ -157,7 +157,7 @@ async function main() {
       weight: '230 г',
 
       imageUrl:
-        'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351',
+        'https://online-sushi.com.ua/image/catalog/interesnaya-informaciya-o-rollah-kaliforniya.jpg',
 
       categoryId:
         rolls.id,
@@ -177,7 +177,7 @@ async function main() {
       weight: '260 г',
 
       imageUrl:
-        'https://images.unsplash.com/photo-1611143669185-af224c5e3252',
+        'https://royal-vip.com.ua/wp-content/uploads/2021/02/bronzov-drakon-sajt.jpg',
 
       categoryId:
         rolls.id,
@@ -197,7 +197,7 @@ async function main() {
       weight: '900 г',
 
       imageUrl:
-        'https://images.unsplash.com/photo-1553621042-f6e147245754',
+        'https://rocosushi.com/uploads/products/994b0b74d9cc0921fef3-%D0%A1%D0%B5%D1%82-4-%D1%81%D1%82%D0%BE%D0%BB-new.jpg',
 
       categoryId:
         sets.id,
@@ -217,7 +217,7 @@ async function main() {
       weight: '1200 г',
 
       imageUrl:
-        'https://images.unsplash.com/photo-1617196034796-73dfa7b1fd56',
+        'https://image.vsem-edu-oblako.ru/upload/store/merchant4146/setsemeinyi0011737526098.jpg?h=675&w=900',
 
       categoryId:
         sets.id,
@@ -240,7 +240,7 @@ async function main() {
       weight: '270 г',
 
       imageUrl:
-        'https://images.unsplash.com/photo-1617196035154-1e7e6e28b0db',
+        'https://sushi-reutov.ru/wp-content/uploads/2022/11/Zapech-losos1080x720-1080x720-1.jpg',
 
       categoryId:
         baked.id,
@@ -263,7 +263,7 @@ async function main() {
       weight: '260 г',
 
       imageUrl:
-        'https://images.unsplash.com/photo-1563612116625-3012372fccce',
+        'https://povaryeshka.by/wp-content/uploads/2024/06/zapechennye-rolly-s-krevetkami.png',
 
       categoryId:
         baked.id,
@@ -286,7 +286,7 @@ async function main() {
       weight: '280 г',
 
       imageUrl:
-        'https://images.unsplash.com/photo-1615361200141-f45040f367be',
+        'https://chefcafe.by/pictures/product/big/5559_big.png',
 
       categoryId:
         tempura.id,
@@ -309,7 +309,7 @@ async function main() {
       weight: '280 г',
 
       imageUrl:
-        'https://images.unsplash.com/photo-1607301405390-d831c242f59b',
+        'https://yapiko.ua/media/catalog/product/cache/90c631851bfc82ed3538a672fa9488bb/t/e/tempura_roll_with_shrimp_and_salmon.jpg',
 
       categoryId:
         tempura.id,
@@ -329,7 +329,7 @@ async function main() {
       weight: '70 г',
 
       imageUrl:
-        'https://images.unsplash.com/photo-1583623025817-d180a2221d0a',
+        'https://higasi.ru/image/cache/catalog/sushisjake-700x562.jpg',
 
       categoryId:
         sushi.id,
@@ -369,7 +369,7 @@ async function main() {
       weight: '500 мл',
 
       imageUrl:
-        'https://images.unsplash.com/photo-1622483767028-3f66f32aef97',
+        'https://png.klev.club/uploads/posts/2024-04/png-klev-club-k686-p-banka-koli-png-10.png',
 
       categoryId:
         drinks.id,
@@ -389,7 +389,7 @@ async function main() {
       weight: '500 мл',
 
       imageUrl:
-        'https://images.unsplash.com/photo-1624517452488-04869289c4ca',
+        'https://kupivody.ru/wp-content/uploads/2021/12/fanta-orange-033.jpg',
 
       categoryId:
         drinks.id,
@@ -420,8 +420,23 @@ async function main() {
             nameEn:
               product.nameEn,
 
+            description:
+              product.description,
+
             descriptionEn:
               product.descriptionEn,
+
+            price:
+              product.price,
+
+            weight:
+              product.weight,
+
+            imageUrl:
+              product.imageUrl,
+
+            categoryId:
+              product.categoryId,
           },
         });
 
