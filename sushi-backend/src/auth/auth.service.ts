@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -154,7 +154,9 @@ export class AuthService {
 
       if (
         !payload ||
-        !payload.sub
+        !payload.sub ||
+        payload.email_verified !== true ||
+        !payload.email?.trim()
       ) {
         throw new UnauthorizedException(
           'Invalid Google token',
@@ -165,11 +167,7 @@ export class AuthService {
         payload.sub;
 
       const verifiedEmail =
-        payload.email_verified ===
-          true
-          ? payload.email ??
-            null
-          : null;
+        payload.email.trim().toLowerCase();
 
       const firstName =
         payload.given_name ??
@@ -186,43 +184,6 @@ export class AuthService {
           },
         });
 
-      if (
-        !user &&
-        verifiedEmail
-      ) {
-        const existingByEmail =
-          await this.prisma.user.findUnique({
-            where: {
-              email:
-                verifiedEmail,
-            },
-          });
-
-        if (
-          existingByEmail
-        ) {
-          user =
-            await this.prisma.user.update({
-              where: {
-                id:
-                  existingByEmail.id,
-              },
-
-              data: {
-                googleId,
-
-                firstName:
-                  existingByEmail.firstName ??
-                  firstName,
-
-                lastName:
-                  existingByEmail.lastName ??
-                  lastName,
-              },
-            });
-        }
-      }
-
       if (!user) {
         user =
           await this.prisma.user.create({
@@ -232,10 +193,19 @@ export class AuthService {
               email:
                 verifiedEmail,
 
+              contactEmail:
+                verifiedEmail,
+
               firstName,
               lastName,
             },
           });
+      } else if (user.email !== verifiedEmail) {
+        // Google supplies the sign-in email; profile changes cannot change it.
+        user = await this.prisma.user.update({
+          where: { id: user.id },
+          data: { email: verifiedEmail },
+        });
       }
 
       const accessToken =

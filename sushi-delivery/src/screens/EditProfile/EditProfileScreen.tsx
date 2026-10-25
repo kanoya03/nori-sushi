@@ -133,10 +133,10 @@ export const EditProfileScreen = ({
   ] = useState(false);
 
   const [
-    email,
-    setEmail,
+    contactEmail,
+    setContactEmail,
   ] = useState(
-    user?.email ?? ''
+    user?.contactEmail ?? ''
   );
 
   const [
@@ -166,8 +166,8 @@ export const EditProfileScreen = ({
           null
         );
 
-        const normalizedEmail =
-          email
+        const normalizedContactEmail =
+          contactEmail
             .trim()
             .toLowerCase();
 
@@ -192,9 +192,9 @@ export const EditProfileScreen = ({
                   ? birthDate.toISOString()
                   : undefined,
 
-              email:
-                normalizedEmail ||
-                undefined,
+              contactEmail:
+                normalizedContactEmail ||
+                null,
             }
           );
 
@@ -487,21 +487,28 @@ export const EditProfileScreen = ({
           />
         )}
 
+        {user?.email && (
+          <View style={styles.signInEmailBlock}>
+            <Text style={styles.dateLabel}>{t('editProfile.signInEmail')}</Text>
+            <Text style={styles.dateText}>{user.email}</Text>
+          </View>
+        )}
+
         <TextInput
           style={
             styles.input
           }
           placeholder={
             t(
-              'editProfile.email'
+              'editProfile.contactEmail'
             )
           }
           placeholderTextColor="#888"
           value={
-            email
+            contactEmail
           }
           onChangeText={
-            setEmail
+            setContactEmail
           }
           autoCapitalize="none"
           keyboardType="email-address"

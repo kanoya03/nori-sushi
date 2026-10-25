@@ -10,7 +10,7 @@ export type UpdateProfileData = {
   lastName?: string;
   gender?: Gender;
   birthDate?: string;
-  email?: string;
+  contactEmail?: string | null;
 };
 
 export const getProfile = (

@@ -6,6 +6,7 @@ export type AuthUser = {
   gender: 'MALE' | 'FEMALE' | null;
   birthDate: string | null;
   email: string | null;
+  contactEmail: string | null;
   telegramId: string | null;
   googleId: string | null;
   createdAt: string;

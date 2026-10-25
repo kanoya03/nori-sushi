@@ -129,6 +129,8 @@ export default {
     member: 'Пользователь NORI',
     welcome: 'Добро пожаловать в NORI',
     email: 'Почта',
+    signInEmail: 'Почта для входа через Google',
+    contactEmail: 'Контактная почта',
     birthday: 'Дата рождения',
     memberSince: 'С нами с',
     signInMethod: 'Подключённые аккаунты',

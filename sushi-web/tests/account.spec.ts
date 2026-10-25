@@ -11,7 +11,8 @@ const user = {
   lastName: 'Tester',
   gender: null,
   birthDate: null,
-  email: 'nori@example.test',
+  email: null,
+  contactEmail: 'nori@example.test',
   telegramId: '42',
   googleId: null,
   createdAt: '2026-01-10T00:00:00.000Z',
@@ -196,7 +197,13 @@ test('Google exchanges an ID token through the existing backend endpoint', async
     await route.fulfill({
       json: {
         accessToken: token,
-        user: { ...user, googleId: 'test-google-user', telegramId: null },
+        user: {
+          ...user,
+          email: 'nori@example.test',
+          contactEmail: 'orders@example.test',
+          googleId: 'test-google-user',
+          telegramId: null,
+        },
       },
     });
   });
@@ -204,6 +211,18 @@ test('Google exchanges an ID token through the existing backend endpoint', async
   await page.getByRole('button', { name: 'Sign in with Google' }).click();
   await expect(page.getByRole('heading', { name: 'Nori Tester' })).toBeVisible();
   await expect(page.locator('.profile-fields')).toContainText('Google');
+  await expect(page.locator('.profile-fields')).toContainText('nori@example.test');
+  await expect(page.locator('.profile-fields')).toContainText('orders@example.test');
+});
+
+test('restores a session while the older API is still missing contactEmail', async ({ page }) => {
+  await seedSession(page);
+  const oldUser: Record<string, unknown> = { ...user };
+  delete oldUser.contactEmail;
+  await page.route(`${api}/auth/me`, (route) => route.fulfill({ json: oldUser }));
+
+  await page.goto('/profile');
+  await expect(page.getByRole('heading', { name: 'Nori Tester' })).toBeVisible();
 });
 
 test('failed session restore preserves the token for retry, while a 401 clears it', async ({

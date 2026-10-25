@@ -1,7 +1,9 @@
 import { apiClient, ApiError } from './client';
 import type { AuthResponse, AuthUser, TelegramSession } from '../types/auth';
 
-function isUser(value: unknown): value is AuthUser {
+type ApiUser = Omit<AuthUser, 'contactEmail'> & { contactEmail?: string | null };
+
+function isUser(value: unknown): value is ApiUser {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
@@ -13,6 +15,9 @@ function isUser(value: unknown): value is AuthUser {
     ['firstName', 'lastName', 'email', 'birthDate', 'telegramId', 'googleId'].every(
       (key) => user[key] === null || typeof user[key] === 'string',
     ) &&
+    (user.contactEmail === undefined ||
+      user.contactEmail === null ||
+      typeof user.contactEmail === 'string') &&
     (user.gender === null || user.gender === 'MALE' || user.gender === 'FEMALE') &&
     typeof user.createdAt === 'string' &&
     typeof user.updatedAt === 'string'
@@ -31,7 +36,10 @@ function parseAuth(value: unknown): AuthResponse {
   ) {
     throw new ApiError('Invalid authentication response.', 0, 'response');
   }
-  return { accessToken: value.accessToken, user: value.user };
+  return {
+    accessToken: value.accessToken,
+    user: { ...value.user, contactEmail: value.user.contactEmail ?? null },
+  };
 }
 
 export async function getCurrentUser(accessToken: string): Promise<AuthUser> {
@@ -39,7 +47,7 @@ export async function getCurrentUser(accessToken: string): Promise<AuthUser> {
   if (!isUser(user)) {
     throw new ApiError('Invalid user response.', 0, 'response');
   }
-  return user;
+  return { ...user, contactEmail: user.contactEmail ?? null };
 }
 
 export async function loginWithGoogle(idToken: string): Promise<AuthResponse> {

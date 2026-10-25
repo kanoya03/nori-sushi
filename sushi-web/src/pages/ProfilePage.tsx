@@ -95,9 +95,15 @@ export function ProfilePage() {
               </div>
             </div>
             <dl className="profile-fields">
+              {user.googleId && (
+                <div>
+                  <dt>{t('profile.signInEmail')}</dt>
+                  <dd>{user.email || t('profile.notProvided')}</dd>
+                </div>
+              )}
               <div>
-                <dt>{t('profile.email')}</dt>
-                <dd>{user.email || t('profile.notProvided')}</dd>
+                <dt>{t('profile.contactEmail')}</dt>
+                <dd>{user.contactEmail || t('profile.notProvided')}</dd>
               </div>
               <div>
                 <dt>{t('profile.birthday')}</dt>

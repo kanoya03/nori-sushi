@@ -134,6 +134,15 @@ export const styles = StyleSheet.create({
   datePlaceholder: {
     color: '#888888',
   },
+  signInEmailBlock: {
+    minHeight: 72,
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    justifyContent: 'center',
+    backgroundColor: '#333333',
+    marginBottom: 18,
+  },
 
   error: {
     color: '#FF6B6B',

@@ -3,5 +3,5 @@ export class UpdateProfileDto {
   lastName?: string;
   gender?: 'MALE' | 'FEMALE';
   birthDate?: string;
-  email?: string;
+  contactEmail?: string | null;
 }

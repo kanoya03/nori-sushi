@@ -614,14 +614,14 @@ export const ProfileScreen = () => {
                 {displayName}
               </Text>
 
-              {user.email && (
+              {(user.contactEmail || user.email) && (
                 <Text
                   style={
                     styles.profileDescription
                   }
                   numberOfLines={1}
                 >
-                  {user.email}
+                  {user.contactEmail || user.email}
                 </Text>
               )}
 

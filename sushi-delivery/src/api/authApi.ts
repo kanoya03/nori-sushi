@@ -17,6 +17,7 @@ export type AuthUser = {
   gender: Gender | null;
   birthDate: string | null;
   email: string | null;
+  contactEmail: string | null;
 
   telegramId: string | null;
   googleId: string | null;

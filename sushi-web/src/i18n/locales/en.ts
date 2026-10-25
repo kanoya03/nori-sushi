@@ -124,6 +124,8 @@ export default {
     member: 'NORI member',
     welcome: 'Welcome to NORI',
     email: 'Email',
+    signInEmail: 'Google sign-in email',
+    contactEmail: 'Contact email',
     birthday: 'Birthday',
     memberSince: 'Member since',
     signInMethod: 'Connected accounts',

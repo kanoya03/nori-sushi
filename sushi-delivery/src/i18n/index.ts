@@ -441,6 +441,8 @@ const resources = {
           'Выберите дату',
 
         email: 'Email',
+        signInEmail: 'Почта для входа через Google',
+        contactEmail: 'Контактная почта',
 
         save: 'Сохранить',
 
@@ -1131,6 +1133,8 @@ const resources = {
           'Choose date',
 
         email: 'Email',
+        signInEmail: 'Google sign-in email',
+        contactEmail: 'Contact email',
 
         save: 'Save',
 

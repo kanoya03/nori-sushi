@@ -71,7 +71,9 @@ model User {
   lastName  String?
   gender    Gender?
   birthDate DateTime?
-  email     String? @unique
+  // Only a verified Google identity may set the sign-in email.
+  email        String? @unique
+  contactEmail String?
 
   telegramId String? @unique
   googleId   String? @unique

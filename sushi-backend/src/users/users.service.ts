@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { UpdateProfileDto } from './dto/update-profile.dto.js';
 
@@ -18,10 +22,29 @@ export class UsersService {
     return user;
   }
 
-  async updateCurrentUser(
-    userId: number,
-    dto: UpdateProfileDto,
-  ) {
+  async updateCurrentUser(userId: number, dto: UpdateProfileDto) {
+    if (!dto || typeof dto !== 'object' || 'email' in dto) {
+      throw new BadRequestException(
+        'Sign-in email cannot be edited in the profile',
+      );
+    }
+
+    let contactEmail: string | null | undefined;
+    if (dto.contactEmail !== undefined) {
+      if (dto.contactEmail !== null && typeof dto.contactEmail !== 'string') {
+        throw new BadRequestException('Invalid contact email');
+      }
+
+      contactEmail = dto.contactEmail?.trim().toLowerCase() || null;
+      if (
+        contactEmail &&
+        (contactEmail.length > 254 ||
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail))
+      ) {
+        throw new BadRequestException('Invalid contact email');
+      }
+    }
+
     return this.prisma.user.update({
       where: { id: userId },
 
@@ -29,10 +52,8 @@ export class UsersService {
         firstName: dto.firstName,
         lastName: dto.lastName,
         gender: dto.gender,
-        birthDate: dto.birthDate
-          ? new Date(dto.birthDate)
-          : undefined,
-        email: dto.email,
+        birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
+        contactEmail,
       },
     });
   }
