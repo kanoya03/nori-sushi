@@ -19,30 +19,35 @@ export function setUnauthorizedHandler(handler: (token: string) => void) {
 export class ApiError extends Error {
   readonly status: number;
   readonly kind: 'http' | 'network' | 'timeout' | 'response';
+  readonly code?: string;
 
-  constructor(message: string, status = 0, kind: ApiError['kind'] = 'http') {
+  constructor(message: string, status = 0, kind: ApiError['kind'] = 'http', code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.kind = kind;
+    this.code = code;
   }
 }
 
-async function getErrorMessage(response: Response): Promise<string> {
+async function getErrorDetails(response: Response): Promise<{ message: string; code?: string }> {
   try {
     const data: unknown = await response.json();
     if (typeof data === 'object' && data !== null && 'message' in data) {
       if (typeof data.message === 'string') {
-        return data.message;
+        return {
+          message: data.message,
+          code: 'code' in data && typeof data.code === 'string' ? data.code : undefined,
+        };
       }
       if (Array.isArray(data.message) && data.message.every((item) => typeof item === 'string')) {
-        return data.message.join(', ');
+        return { message: data.message.join(', ') };
       }
     }
   } catch {
     // Render or a proxy can return a non-JSON error response.
   }
-  return `API error: ${response.status}`;
+  return { message: `API error: ${response.status}` };
 }
 
 async function request<T>(
@@ -82,7 +87,8 @@ async function request<T>(
       if (response.status === 401 && accessToken) {
         onUnauthorized?.(accessToken);
       }
-      throw new ApiError(await getErrorMessage(response), response.status);
+      const details = await getErrorDetails(response);
+      throw new ApiError(details.message, response.status, 'http', details.code);
     }
     if (response.status === 204) {
       return undefined as T;

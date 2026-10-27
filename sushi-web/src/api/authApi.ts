@@ -1,7 +1,10 @@
 import { apiClient, ApiError } from './client';
 import type { AuthResponse, AuthUser, TelegramSession } from '../types/auth';
 
-type ApiUser = Omit<AuthUser, 'contactEmail'> & { contactEmail?: string | null };
+type ApiUser = Omit<AuthUser, 'contactEmail' | 'phone'> & {
+  contactEmail?: string | null;
+  phone?: string | null;
+};
 
 function isUser(value: unknown): value is ApiUser {
   if (typeof value !== 'object' || value === null) {
@@ -18,6 +21,7 @@ function isUser(value: unknown): value is ApiUser {
     (user.contactEmail === undefined ||
       user.contactEmail === null ||
       typeof user.contactEmail === 'string') &&
+    (user.phone === undefined || user.phone === null || typeof user.phone === 'string') &&
     (user.gender === null || user.gender === 'MALE' || user.gender === 'FEMALE') &&
     typeof user.createdAt === 'string' &&
     typeof user.updatedAt === 'string'
@@ -38,7 +42,11 @@ function parseAuth(value: unknown): AuthResponse {
   }
   return {
     accessToken: value.accessToken,
-    user: { ...value.user, contactEmail: value.user.contactEmail ?? null },
+    user: {
+      ...value.user,
+      contactEmail: value.user.contactEmail ?? null,
+      phone: value.user.phone ?? null,
+    },
   };
 }
 
@@ -47,7 +55,7 @@ export async function getCurrentUser(accessToken: string): Promise<AuthUser> {
   if (!isUser(user)) {
     throw new ApiError('Invalid user response.', 0, 'response');
   }
-  return { ...user, contactEmail: user.contactEmail ?? null };
+  return { ...user, contactEmail: user.contactEmail ?? null, phone: user.phone ?? null };
 }
 
 export async function loginWithGoogle(idToken: string): Promise<AuthResponse> {

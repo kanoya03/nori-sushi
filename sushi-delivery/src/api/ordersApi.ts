@@ -35,6 +35,7 @@ export type OrderItem = {
 };
 
 export type Order = {
+  recipientPhone?: string | null;
   id: number;
   userId: number | null;
   guestToken?: string | null;
@@ -52,11 +53,14 @@ export type Order = {
 };
 
 export type CreateOrderItem = {
+  expectedUnitPrice: number;
   productId: number;
   quantity: number;
 };
 
 export type CreateOrderData = {
+  recipientPhone: string;
+  idempotencyKey: string;
   deliveryType: DeliveryType;
   paymentMethod: PaymentMethod;
   address?: string;
@@ -98,12 +102,14 @@ export const getOrderById = (
 
 export const createOrder = (
   accessToken: string,
-  data: CreateOrderData
+  data: CreateOrderData,
+  signal?: AbortSignal
 ): Promise<Order> => {
   return apiClient.postWithAuth<Order>(
     '/orders',
     accessToken,
-    data
+    data,
+    { signal }
   );
 };
 
@@ -118,11 +124,13 @@ export const cancelOrder = (
 };
 
 export const createGuestOrder = (
-  data: CreateOrderData
+  data: CreateOrderData,
+  signal?: AbortSignal
 ): Promise<Order> => {
   return apiClient.post<Order>(
     '/orders/guest',
-    data
+    data,
+    { signal }
   );
 };
 

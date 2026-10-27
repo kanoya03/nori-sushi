@@ -16,6 +16,7 @@ import { OrdersService } from './orders.service.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { LimitRequests, RateLimitGuard } from '../rate-limit/rate-limit.guard.js';
 
 @Controller('orders')
 export class OrdersController {
@@ -25,7 +26,8 @@ export class OrdersController {
   ) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RateLimitGuard)
+  @LimitRequests('user-orders')
   createOrder(
     @Req()
     request: {
@@ -44,6 +46,8 @@ export class OrdersController {
   }
 
   @Post('guest')
+  @UseGuards(RateLimitGuard)
+  @LimitRequests('guest-orders')
   createGuestOrder(
     @Body()
     dto: CreateOrderDto,

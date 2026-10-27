@@ -31,8 +31,8 @@ export async function getProductById(id: number, signal?: AbortSignal): Promise<
   return mapApiProduct(product);
 }
 
-export async function getProducts(): Promise<Product[]> {
-  const products = await apiClient.get<unknown>('/products');
+export async function getProducts(signal?: AbortSignal): Promise<Product[]> {
+  const products = await apiClient.get<unknown>('/products', { signal });
   if (!Array.isArray(products) || !products.every(isProduct)) {
     throw new ApiError('Invalid products response.', 0, 'response');
   }

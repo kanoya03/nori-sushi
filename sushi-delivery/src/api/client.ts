@@ -1,249 +1,162 @@
-const rawApiUrl =
-  process.env.EXPO_PUBLIC_API_URL;
+const rawApiUrl = process.env.EXPO_PUBLIC_API_URL;
+if (!rawApiUrl) throw new Error("EXPO_PUBLIC_API_URL is not configured");
+const API_URL = rawApiUrl.replace(/\/+$/, "");
 
-if (!rawApiUrl) {
-  throw new Error(
-    'EXPO_PUBLIC_API_URL is not configured'
-  );
-}
-
-const API_URL =
-  rawApiUrl.replace(
-    /\/+$/,
-    ''
-  );
-
-type RequestOptions = {
-  method?:
-    | 'GET'
-    | 'POST'
-    | 'PATCH'
-    | 'DELETE';
-
+export type RequestControl = { signal?: AbortSignal; timeoutMs?: number };
+type RequestOptions = RequestControl & {
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   accessToken?: string;
   body?: unknown;
 };
 
-export class ApiError extends Error {
-  status: number;
+let onUnauthorized: ((token: string) => void) | undefined;
+export function setUnauthorizedHandler(handler: (token: string) => void) {
+  onUnauthorized = handler;
+}
 
+export class ApiError extends Error {
   constructor(
     message: string,
-    status: number
+    readonly status: number,
+    readonly code?: string,
+    readonly kind: "http" | "network" | "timeout" | "response" = "http",
   ) {
     super(message);
-
-    this.name = 'ApiError';
-    this.status = status;
+    this.name = "ApiError";
   }
 }
 
-const buildUrl = (
-  endpoint: string
-): string => {
-  const normalizedEndpoint =
-    endpoint.startsWith('/')
-      ? endpoint
-      : `/${endpoint}`;
-
-  return `${API_URL}${normalizedEndpoint}`;
-};
-
-const getErrorMessage = async (
-  response: Response
-): Promise<string> => {
+async function errorDetails(
+  response: Response,
+): Promise<{ message: string; code?: string }> {
   try {
-    const data: unknown =
-      await response.json();
-
-    if (
-      typeof data === 'object' &&
-      data !== null &&
-      'message' in data
-    ) {
-      const message =
-        (
-          data as {
-            message?: unknown;
-          }
-        ).message;
-
-      if (
-        typeof message ===
-        'string'
-      ) {
-        return message;
+    const data: unknown = await response.json();
+    if (typeof data === "object" && data !== null && "message" in data) {
+      if (typeof data.message === "string") {
+        return {
+          message: data.message,
+          code:
+            "code" in data && typeof data.code === "string"
+              ? data.code
+              : undefined,
+        };
       }
-
       if (
-        Array.isArray(message) &&
-        message.every(
-          (item) =>
-            typeof item ===
-            'string'
-        )
+        Array.isArray(data.message) &&
+        data.message.every((item) => typeof item === "string")
       ) {
-        return message.join(
-          ', '
-        );
+        return { message: data.message.join(", ") };
       }
     }
   } catch {
-    // Backend did not return JSON.
+    /* Proxies can return a non-JSON response. */
   }
+  return { message: `API error: ${response.status}` };
+}
 
-  return `API error: ${response.status}`;
-};
-
-const request = async <T>(
+async function request<T>(
   endpoint: string,
   {
-    method = 'GET',
+    method = "GET",
     accessToken,
     body,
-  }: RequestOptions = {}
-): Promise<T> => {
-  const headers: Record<
-    string,
-    string
-  > = {};
-
-  if (body !== undefined) {
-    headers['Content-Type'] =
-      'application/json';
-  }
-
-  if (accessToken) {
-    headers.Authorization =
-      `Bearer ${accessToken}`;
-  }
-
-  const response =
-    await fetch(
-      buildUrl(endpoint),
-      {
-        method,
-        headers,
-
-        body:
-          body !== undefined
-            ? JSON.stringify(
-                body
-              )
-            : undefined,
-      }
-    );
-
-  if (!response.ok) {
-    const message =
-      await getErrorMessage(
-        response
-      );
-
+    signal,
+    timeoutMs = 30_000,
+  }: RequestOptions = {},
+): Promise<T> {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  if (signal?.aborted) controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  try {
+    const response = await fetch(`${API_URL}/${endpoint.replace(/^\/+/, "")}`, {
+      method,
+      headers,
+      signal: controller.signal,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (!response.ok) {
+      if (response.status === 401 && accessToken) onUnauthorized?.(accessToken);
+      const details = await errorDetails(response);
+      throw new ApiError(details.message, response.status, details.code);
+    }
+    if (response.status === 204) return undefined as T;
+    return (await response.json()) as T;
+  } catch (error) {
+    if (timedOut)
+      throw new ApiError("The request timed out.", 0, undefined, "timeout");
+    if (signal?.aborted || error instanceof ApiError) throw error;
+    if (error instanceof SyntaxError)
+      throw new ApiError("Invalid API response.", 0, undefined, "response");
     throw new ApiError(
-      message,
-      response.status
+      "Unable to connect to the API.",
+      0,
+      undefined,
+      "network",
     );
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", abort);
   }
-
-  if (
-    response.status === 204
-  ) {
-    return undefined as T;
-  }
-
-  return (
-    await response.json()
-  ) as T;
-};
+}
 
 export const apiClient = {
-  get<T>(
-    endpoint: string
-  ): Promise<T> {
-    return request<T>(
-      endpoint
-    );
+  request,
+  get<T>(endpoint: string, options?: RequestControl) {
+    return request<T>(endpoint, options);
   },
-
-  post<T>(
-    endpoint: string,
-    body?: unknown
-  ): Promise<T> {
-    return request<T>(
-      endpoint,
-      {
-        method: 'POST',
-        body,
-      }
-    );
+  post<T>(endpoint: string, body?: unknown, options?: RequestControl) {
+    return request<T>(endpoint, { ...options, method: "POST", body });
   },
-
-  patch<T>(
-    endpoint: string,
-    body?: unknown
-  ): Promise<T> {
-    return request<T>(
-      endpoint,
-      {
-        method: 'PATCH',
-        body,
-      }
-    );
+  patch<T>(endpoint: string, body?: unknown, options?: RequestControl) {
+    return request<T>(endpoint, { ...options, method: "PATCH", body });
   },
-
   getWithAuth<T>(
     endpoint: string,
-    accessToken: string
-  ): Promise<T> {
-    return request<T>(
-      endpoint,
-      {
-        accessToken,
-      }
-    );
+    accessToken: string,
+    options?: RequestControl,
+  ) {
+    return request<T>(endpoint, { ...options, accessToken });
   },
-
   postWithAuth<T>(
     endpoint: string,
     accessToken: string,
-    body?: unknown
-  ): Promise<T> {
-    return request<T>(
-      endpoint,
-      {
-        method: 'POST',
-        accessToken,
-        body,
-      }
-    );
+    body?: unknown,
+    options?: RequestControl,
+  ) {
+    return request<T>(endpoint, {
+      ...options,
+      method: "POST",
+      accessToken,
+      body,
+    });
   },
-
   patchWithAuth<T>(
     endpoint: string,
     accessToken: string,
-    body?: unknown
-  ): Promise<T> {
-    return request<T>(
-      endpoint,
-      {
-        method: 'PATCH',
-        accessToken,
-        body,
-      }
-    );
+    body?: unknown,
+    options?: RequestControl,
+  ) {
+    return request<T>(endpoint, {
+      ...options,
+      method: "PATCH",
+      accessToken,
+      body,
+    });
   },
-
   deleteWithAuth<T>(
     endpoint: string,
-    accessToken: string
-  ): Promise<T> {
-    return request<T>(
-      endpoint,
-      {
-        method: 'DELETE',
-        accessToken,
-      }
-    );
+    accessToken: string,
+    options?: RequestControl,
+  ) {
+    return request<T>(endpoint, { ...options, method: "DELETE", accessToken });
   },
 };

@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiClient, ApiError } from './client';
 
 import {
   mapApiProduct,
@@ -8,12 +8,15 @@ import {
 import type { Product } from '../types/product';
 
 export const getProducts =
-  async (): Promise<Product[]> => {
+  async (signal?: AbortSignal): Promise<Product[]> => {
     const products =
       await apiClient.get<ApiProduct[]>(
-        '/products'
+        '/products', { signal }
       );
 
+    if (!Array.isArray(products) || products.some((product) => !product || !Number.isSafeInteger(product.id) || !Number.isSafeInteger(product.price) || product.price < 0 || !product.category || typeof product.name !== 'string')) {
+      throw new ApiError('Invalid products response.', 0, undefined, 'response');
+    }
     return products.map(
       mapApiProduct
     );

@@ -138,6 +138,41 @@ test('guest favorites persist and render current catalog data', async ({ page })
   await expect(page.getByRole('heading', { name: 'Make room for your favourites' })).toBeVisible();
 });
 
+test('Telegram session rate limit explains when to retry', async ({ page }) => {
+  await page.route(`${api}/auth/telegram/start`, (route) =>
+    route.fulfill({
+      status: 429,
+      json: { message: 'Too many requests', code: 'RATE_LIMITED', retryAfter: 60 },
+      headers: { 'Retry-After': '60' },
+    }),
+  );
+  await page.goto('/profile');
+  await page.getByRole('button', { name: 'Continue with Telegram' }).click();
+  await expect(page.getByRole('alert')).toContainText('Too many sign-in attempts');
+  await expect(page.getByRole('button', { name: 'Continue with Telegram' })).toBeEnabled();
+});
+
+test('a locked Telegram code asks for a new session', async ({ page }) => {
+  await page.route(`${api}/auth/telegram/start`, (route) =>
+    route.fulfill({
+      json: { sessionToken: 'test-token', telegramUrl: 'https://t.me/nori_bot?start=test-token' },
+    }),
+  );
+  await page.route(`${api}/auth/telegram/verify`, (route) =>
+    route.fulfill({ status: 429, json: { message: 'Locked', code: 'TELEGRAM_SESSION_LOCKED' } }),
+  );
+  await page.goto('/profile');
+  await page.getByRole('button', { name: 'Continue with Telegram' }).click();
+  await page.getByLabel('Six-digit code').fill('000000');
+  await page.getByRole('button', { name: 'Verify and sign in' }).click();
+  await expect(page.getByRole('alert')).toContainText('locked after five incorrect attempts');
+  await expect(page.getByRole('button', { name: 'Start again with a new code' })).toBeEnabled();
+  expect(await page.evaluate((key) => sessionStorage.getItem(key), sessionKey)).toBeNull();
+  await page.getByRole('button', { name: 'Start again with a new code' }).click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByLabel('Six-digit code')).toHaveValue('');
+});
+
 test('Telegram sign-in validates the code, restores the user and separates account favorites', async ({
   page,
 }) => {

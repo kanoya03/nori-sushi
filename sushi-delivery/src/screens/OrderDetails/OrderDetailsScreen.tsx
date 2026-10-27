@@ -890,6 +890,11 @@ export const OrderDetailsScreen = ({
                   {order.address}
                 </Text>
               )}
+              {order.recipientPhone && (
+                <Text style={styles.address}>
+                  {t('checkout.phone')}: {order.recipientPhone}
+                </Text>
+              )}
             </View>
           </View>
 

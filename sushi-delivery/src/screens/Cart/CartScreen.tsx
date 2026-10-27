@@ -269,7 +269,7 @@ export const CartScreen = () => {
                       styles.price
                     }
                   >
-                    {formatPrice(
+                    {item.product.isAvailable === false ? t('checkout.itemUnavailable') : formatPrice(
                       item.product.price,
                       language
                     )}

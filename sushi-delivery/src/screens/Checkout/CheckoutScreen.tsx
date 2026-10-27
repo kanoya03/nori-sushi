@@ -1,5 +1,7 @@
 import {
   useState,
+  useEffect,
+  useRef,
 } from 'react';
 
 import {
@@ -51,6 +53,7 @@ import {
   createGuestOrder,
   createOrder,
 } from '../../api/ordersApi';
+import { ApiError } from '../../api/client';
 
 import type {
   CreateOrderData,
@@ -68,6 +71,16 @@ import {
 import {
   getProductName,
 } from '../../utils/productLocalization';
+
+import {
+  clearOrderAttemptKey,
+  getOrderAttemptKey,
+  hasPendingOrderAttempt,
+} from '../../utils/orderAttempt';
+import { normalizePhoneNumber } from '../../utils/phone';
+import { readGuestPhone, saveGuestPhone } from '../../utils/guestPhone';
+import { getProducts } from '../../api/productsApi';
+import { cartSelection } from '../../utils/refreshCart';
 
 import {
   styles,
@@ -173,6 +186,28 @@ export const CheckoutScreen = ({
       (state) =>
         state.accessToken
     );
+  const userId = useAuthStore((state) => state.user?.id);
+  const userPhone = useAuthStore((state) => state.user?.phone);
+  const phoneScope = accessToken ? `user:${userId}` : 'guest';
+  const [guestPhone, setGuestPhone] = useState('');
+  const [phoneEntry, setPhoneEntry] = useState({ scope: '', value: '' });
+  const savedPhone = accessToken ? normalizePhoneNumber(userPhone) ?? '' : guestPhone;
+  const phone = phoneEntry.scope === phoneScope ? phoneEntry.value : savedPhone;
+  const [phoneError, setPhoneError] = useState(false);
+  const submitRequest = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
+  const [cartNotice, setCartNotice] = useState<'cartUpdated' | 'cartUnavailable' | null>(null);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; submitRequest.current?.abort(); };
+  }, []);
+  useEffect(() => navigation.addListener('blur', () => submitRequest.current?.abort()), [navigation]);
+
+  useEffect(() => {
+    let active = true;
+    void readGuestPhone().then((saved) => { if (active) setGuestPhone(saved); });
+    return () => { active = false; };
+  }, []);
 
   const currentAddress =
     useAddressStore(
@@ -255,6 +290,18 @@ export const CheckoutScreen = ({
 
   const handleConfirmOrder =
     async () => {
+      if (isOrdering || submitRequest.current) return;
+      const session = useAuthStore.getState();
+      if (session.isRestoring || session.restoreError) {
+        Alert.alert(t('common.error'), t('auth.restoreError'), [{ text: t('auth.retrySession'), onPress: () => void session.restoreSession() }]);
+        return;
+      }
+      const recipientPhone = normalizePhoneNumber(phone);
+      if (!recipientPhone) {
+        setPhoneError(true);
+        Alert.alert(t('common.error'), t('checkout.phoneInvalid'));
+        return;
+      }
       if (
         deliveryType ===
           'delivery' &&
@@ -307,7 +354,7 @@ export const CheckoutScreen = ({
       }
 
       if (
-        !isMinimumReached
+        !isMinimumReached && !hasPendingOrderAttempt(phoneScope)
       ) {
         Alert.alert(
           t(
@@ -328,8 +375,9 @@ export const CheckoutScreen = ({
         return;
       }
 
-      const orderData:
-        CreateOrderData = {
+      const payload:
+        Omit<CreateOrderData, 'idempotencyKey'> = {
+        recipientPhone,
         deliveryType:
           deliveryType ===
           'delivery'
@@ -356,24 +404,57 @@ export const CheckoutScreen = ({
 
               quantity:
                 item.quantity,
+              expectedUnitPrice: item.product.price,
             })
           ),
       };
 
+      const controller = new AbortController();
+      submitRequest.current = controller;
+      let posting = false;
       try {
         setIsOrdering(
           true
         );
 
+        if (!hasPendingOrderAttempt(phoneScope, payload)) {
+          const fresh = await getProducts(controller.signal);
+          if (controller.signal.aborted) return;
+          if (cartSelection(useCartStore.getState().items) !== cartSelection(items)) {
+            setCartNotice('cartUpdated');
+            Alert.alert(t('checkout.reviewCart'), t('checkout.cartUpdated'));
+            return;
+          }
+          const result = useCartStore.getState().refreshProducts(fresh);
+          if (result.unavailable.length || result.changed) {
+            const notice = result.unavailable.length ? 'cartUnavailable' : 'cartUpdated';
+            setCartNotice(notice);
+            Alert.alert(t('checkout.reviewCart'), t(`checkout.${notice}`));
+            return;
+          }
+          if (useCartStore.getState().getTotalPrice() < MINIMUM_ORDER_AMOUNT) {
+            setCartNotice('cartUpdated');
+            return;
+          }
+        }
+        if (controller.signal.aborted || useAuthStore.getState().accessToken !== accessToken ||
+            cartSelection(useCartStore.getState().items) !== cartSelection(items)) return;
+        const idempotencyKey = getOrderAttemptKey(phoneScope, payload);
+        const orderData: CreateOrderData = { ...payload, idempotencyKey };
+        posting = true;
+
         const order =
           accessToken
             ? await createOrder(
                 accessToken,
-                orderData
+                orderData,
+                controller.signal
               )
             : await createGuestOrder(
-                orderData
+                orderData,
+                controller.signal
               );
+        if (controller.signal.aborted) return;
 
         if (!accessToken) {
           if (
@@ -390,7 +471,17 @@ export const CheckoutScreen = ({
           );
         }
 
+        if (!accessToken) {
+          await saveGuestPhone(recipientPhone);
+        } else {
+          const current = useAuthStore.getState();
+          if (current.user && current.user.id === userId && current.accessToken === accessToken) {
+            current.setUser({ ...current.user, phone: recipientPhone });
+          }
+        }
+        if (controller.signal.aborted || cartSelection(useCartStore.getState().items) !== cartSelection(items)) return;
         clearCart();
+        clearOrderAttemptKey(idempotencyKey);
 
         navigation.replace(
           'OrderSuccess',
@@ -400,6 +491,20 @@ export const CheckoutScreen = ({
           }
         );
       } catch (error) {
+        if (controller.signal.aborted) return;
+        if (error instanceof ApiError && error.status === 409 && error.code === 'CART_CHANGED') {
+          try {
+            const fresh = await getProducts(controller.signal);
+            if (controller.signal.aborted) return;
+            const result = useCartStore.getState().refreshProducts(fresh);
+            const notice = result.unavailable.length ? 'cartUnavailable' : 'cartUpdated';
+            setCartNotice(notice);
+            Alert.alert(t('checkout.reviewCart'), t(`checkout.${notice}`));
+          } catch {
+            if (!controller.signal.aborted) Alert.alert(t('common.error'), t('checkout.catalogRefreshError'));
+          }
+          return;
+        }
         console.error(
           'Failed to create order:',
           error
@@ -410,13 +515,12 @@ export const CheckoutScreen = ({
             'common.error'
           ),
           t(
-            'checkout.orderError'
+            !posting ? 'checkout.catalogRefreshError' : error instanceof ApiError && error.status === 429 ? 'checkout.rateLimited' : 'checkout.orderError'
           )
         );
       } finally {
-        setIsOrdering(
-          false
-        );
+        if (submitRequest.current === controller) submitRequest.current = null;
+        if (mounted.current) setIsOrdering(false);
       }
     };
 
@@ -427,6 +531,7 @@ export const CheckoutScreen = ({
       }
     >
       <ScrollView
+        pointerEvents={isOrdering ? 'none' : 'auto'}
         showsVerticalScrollIndicator={
           false
         }
@@ -443,6 +548,31 @@ export const CheckoutScreen = ({
             'checkout.title'
           )}
         </Text>
+
+        {cartNotice && <Text accessibilityRole="alert" style={styles.minimumWarningText}>{t(`checkout.${cartNotice}`)}</Text>}
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('checkout.contactTitle')}</Text>
+          <Text nativeID="recipient-phone-label">{t('checkout.phone')}</Text>
+          <TextInput
+            style={[styles.phoneInput, phoneError && styles.phoneInputError]}
+            accessibilityLabel={t('checkout.phone')}
+            keyboardType="phone-pad"
+            autoComplete="tel"
+            textContentType="telephoneNumber"
+            maxLength={32}
+            placeholder="+7 (701) 123-45-67"
+            value={phone}
+            onChangeText={(value) => {
+              setPhoneEntry({ scope: phoneScope, value });
+              setPhoneError(false);
+            }}
+            onBlur={() => setPhoneError(Boolean(phone) && !normalizePhoneNumber(phone))}
+          />
+          <Text style={phoneError ? styles.phoneError : styles.disabledHint}>
+            {t(phoneError ? 'checkout.phoneInvalid' : 'checkout.phoneHint')}
+          </Text>
+        </View>
 
         <View
           style={
@@ -888,7 +1018,7 @@ export const CheckoutScreen = ({
                     styles.itemPrice
                   }
                 >
-                  {formatPrice(
+                  {item.product.isAvailable === false ? t('checkout.itemUnavailable') : formatPrice(
                     item.product.price *
                       item.quantity,
                     language
@@ -1033,13 +1163,13 @@ export const CheckoutScreen = ({
 
             (
               isOrdering ||
-              !isMinimumReached
+              (!isMinimumReached && !hasPendingOrderAttempt(phoneScope))
             ) &&
               styles.confirmButtonDisabled,
           ]}
           disabled={
             isOrdering ||
-            !isMinimumReached
+            (!isMinimumReached && !hasPendingOrderAttempt(phoneScope))
           }
           onPress={
             handleConfirmOrder

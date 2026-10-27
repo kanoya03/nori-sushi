@@ -3,16 +3,17 @@ import { ExternalLink, Send } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
 import { startTelegramAuth } from '../../api/authApi';
+import { ApiError } from '../../api/client';
 import type { TelegramSession } from '../../types/auth';
 import { GoogleSignIn } from './GoogleSignIn';
 
 export function AuthPanel() {
   const { t } = useTranslation();
-  const { status, error, signInTelegram } = useAuthStore();
+  const { status, error, signInTelegram, clearError } = useAuthStore();
   const [session, setSession] = useState<TelegramSession | null>(null);
   const [code, setCode] = useState('');
   const [starting, setStarting] = useState(false);
-  const [startError, setStartError] = useState(false);
+  const [startError, setStartError] = useState<'telegramStartError' | 'rateLimited' | null>(null);
   const controller = useRef<AbortController | null>(null);
   const busy = starting || status === 'authenticating';
 
@@ -23,16 +24,19 @@ export function AuthPanel() {
     const request = new AbortController();
     controller.current = request;
     setStarting(true);
-    setStartError(false);
+    setStartError(null);
+    clearError();
     try {
       const result = await startTelegramAuth(request.signal);
       if (!request.signal.aborted) {
         setSession(result);
         setCode('');
       }
-    } catch {
+    } catch (error) {
       if (!request.signal.aborted) {
-        setStartError(true);
+        setStartError(
+          error instanceof ApiError && error.status === 429 ? 'rateLimited' : 'telegramStartError',
+        );
       }
     } finally {
       if (!request.signal.aborted) {
@@ -114,7 +118,7 @@ export function AuthPanel() {
       )}
       {startError && (
         <p role="alert" className="inline-error">
-          {t('auth.telegramStartError')}
+          {t(`auth.${startError}`)}
         </p>
       )}
       <p className="auth-note muted">{t('auth.sessionNote')}</p>

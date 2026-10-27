@@ -34,6 +34,7 @@ export type ApiProduct = {
 export const mapApiProduct = (
   product: ApiProduct
 ): Product => ({
+  isAvailable: product.isAvailable !== false,
   id:
     product.id,
 

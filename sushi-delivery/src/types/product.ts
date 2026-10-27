@@ -1,4 +1,5 @@
 export type Product = {
+  isAvailable?: boolean;
   id: number;
 
   name: string;

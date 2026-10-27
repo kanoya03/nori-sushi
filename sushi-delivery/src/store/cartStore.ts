@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import type { Product } from '../types/product';
 import type { CartItem } from '../types/cart';
+import { refreshCartItems } from '../utils/refreshCart';
 
 type CartState = {
   items: CartItem[];
@@ -28,6 +29,7 @@ type CartState = {
   ) => void;
 
   clearCart: () => void;
+  refreshProducts: (products: Product[]) => ReturnType<typeof refreshCartItems>;
 
   getTotalPrice: () => number;
   getTotalQuantity: () => number;
@@ -65,6 +67,7 @@ const addProductToItems = (
       product.id
         ? {
             ...item,
+            product,
             quantity:
               item.quantity +
               quantity,
@@ -76,6 +79,11 @@ const addProductToItems = (
 export const useCartStore =
   create<CartState>((set, get) => ({
     items: [],
+    refreshProducts: (products) => {
+      const result = refreshCartItems(get().items, products);
+      set({ items: result.items });
+      return result;
+    },
 
     addProduct: (
       product
@@ -175,9 +183,7 @@ export const useCartStore =
           total,
           item
         ) =>
-          total +
-          item.product.price *
-            item.quantity,
+          total + (item.product.isAvailable === false ? 0 : item.product.price * item.quantity),
         0
       ),
 

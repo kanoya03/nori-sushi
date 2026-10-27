@@ -1,6 +1,8 @@
 import {
   useEffect,
 } from 'react';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import {
   AppNavigator,
@@ -27,6 +29,10 @@ import {
 } from './src/api/addressesApi';
 
 export default function App() {
+  const { t } = useTranslation();
+  const restoreError = useAuthStore((state) => state.restoreError);
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
   const restoreSession =
     useAuthStore(
       (state) =>
@@ -95,7 +101,7 @@ export default function App() {
 
   useEffect(() => {
     if (
-      authIsRestoring
+      authIsRestoring || restoreError
     ) {
       return;
     }
@@ -110,6 +116,7 @@ export default function App() {
   }, [
     accessToken,
     authIsRestoring,
+    restoreError,
     loadFavorites,
     clearFavorites,
   ]);
@@ -118,7 +125,7 @@ export default function App() {
     const restoreAddress =
       async () => {
         if (
-          authIsRestoring
+          authIsRestoring || restoreError
         ) {
           return;
         }
@@ -160,6 +167,7 @@ export default function App() {
   }, [
     accessToken,
     authIsRestoring,
+    restoreError,
     setCurrentAddress,
     clearCurrentAddress,
   ]);
@@ -170,5 +178,23 @@ export default function App() {
     return null;
   }
 
+  if (!user && (authIsRestoring || restoreError)) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', padding: 28, gap: 20, backgroundColor: '#fff' }}>
+        {authIsRestoring ? <>
+          <ActivityIndicator size="large" color="#111" />
+          <Text>{t('auth.restoringSession')}</Text>
+        </> : <>
+          <Text accessibilityRole="alert">{t('auth.restoreError')}</Text>
+          <Pressable onPress={() => void restoreSession()} style={{ padding: 16, borderRadius: 12, backgroundColor: '#111' }}>
+            <Text style={{ color: '#fff', textAlign: 'center' }}>{t('auth.retrySession')}</Text>
+          </Pressable>
+          <Pressable onPress={() => void logout().catch(() => undefined)} style={{ padding: 16 }}>
+            <Text style={{ textAlign: 'center' }}>{t('auth.continueAsGuest')}</Text>
+          </Pressable>
+        </>}
+      </View>
+    );
+  }
   return <AppNavigator />;
 }

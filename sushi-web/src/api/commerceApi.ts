@@ -16,12 +16,12 @@ export const getOrders = (token: string, signal?: AbortSignal) =>
   apiClient.get<Order[]>('/orders', { accessToken: token, signal });
 export const getOrder = (token: string, id: number, signal?: AbortSignal) =>
   apiClient.get<Order>(`/orders/${id}`, { accessToken: token, signal });
-export const createOrder = (token: string, data: CreateOrderInput) =>
-  apiClient.request<Order>('/orders', { method: 'POST', accessToken: token, body: data });
+export const createOrder = (token: string, data: CreateOrderInput, signal?: AbortSignal) =>
+  apiClient.request<Order>('/orders', { method: 'POST', accessToken: token, body: data, signal });
 export const cancelOrder = (token: string, id: number) =>
   apiClient.request<Order>(`/orders/${id}/cancel`, { method: 'PATCH', accessToken: token });
-export const createGuestOrder = (data: CreateOrderInput) =>
-  apiClient.request<Order>('/orders/guest', { method: 'POST', body: data });
+export const createGuestOrder = (data: CreateOrderInput, signal?: AbortSignal) =>
+  apiClient.request<Order>('/orders/guest', { method: 'POST', body: data, signal });
 export const getGuestOrder = (id: number, token: string, signal?: AbortSignal) =>
   apiClient.get<Order>(`/orders/guest/${id}?token=${encodeURIComponent(token)}`, { signal });
 export const cancelGuestOrder = (id: number, token: string) =>

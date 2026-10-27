@@ -4,9 +4,11 @@ import { JwtModule } from '@nestjs/jwt';
 import { OrdersController } from './orders.controller.js';
 import { OrdersService } from './orders.service.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { RateLimitModule } from '../rate-limit/rate-limit.module.js';
 
 @Module({
   imports: [
+    RateLimitModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET,
     }),

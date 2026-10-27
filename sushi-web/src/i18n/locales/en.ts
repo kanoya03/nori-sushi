@@ -92,6 +92,9 @@ export default {
     updateError: 'We couldn’t save that change. Your favorites have not changed. Please try again.',
   },
   auth: {
+    rateLimited: 'Too many sign-in attempts. Wait a few minutes and try again.',
+    telegramLocked:
+      'This code was locked after five incorrect attempts. Start again with a new code.',
     signIn: 'Sign in',
     description: 'Welcome to NORI. Sign in to see your profile and account favorites.',
     googleUnavailable: 'Google sign-in is not available here yet. You can sign in with Telegram.',
@@ -160,6 +163,14 @@ export default {
     comment: 'Address note',
   },
   checkout: {
+    cartUpdated: 'Prices or cart contents changed. Review the updated order and confirm again.',
+    catalogRefreshError:
+      'We could not check current prices and availability. Your order was not submitted. Try again.',
+    contactTitle: 'Recipient contact',
+    phone: 'Phone number',
+    phoneHint:
+      'Include the country code, for example +7 701 123-45-67. We will remember it for your next order.',
+    phoneInvalid: 'Enter a valid phone number starting with + and the country code.',
     title: 'Checkout',
     description: 'Choose how you would like to receive your order.',
     receive: 'RECEIVE',
@@ -203,6 +214,7 @@ export default {
     serverValidation:
       'The order could not be accepted. Check item availability and the minimum order amount.',
     orderError: 'We could not place your order. Your cart is still saved; please try again.',
+    rateLimited: 'Orders are being submitted too often. Wait a few minutes. Your cart is saved.',
     mapLabel: 'Delivery area map',
     mapUnavailable: 'Map preview is unavailable',
     mapFallback: 'Enter the address above. Add VITE_MAPBOX_TOKEN to enable map selection.',

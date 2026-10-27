@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState, type FormEvent } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, MapPin, Plus, Store } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -12,12 +12,20 @@ import { PageHeading } from '../components/common/PageHeading';
 import { PICKUP_POINTS } from '../constants/pickupPoints';
 import { DELIVERY_FEE_KZT, MINIMUM_ORDER_KZT } from '../constants/checkout';
 import { saveGuestOrderRef } from '../lib/guestOrders';
+import {
+  clearOrderAttemptKey,
+  getOrderAttemptKey,
+  hasPendingOrderAttempt,
+} from '../lib/orderAttempt';
+import { getProducts } from '../api/productsApi';
 import { readSelectedAddressId } from '../lib/selectedAddress';
+import { readGuestPhone, saveGuestPhone } from '../lib/guestPhone';
+import { normalizePhoneNumber } from '../utils/phone';
 import { useAuthStore } from '../store/authStore';
 import { useCartStore } from '../store/cartStore';
 import { useCatalogStore } from '../store/catalogStore';
 import { useLanguageStore } from '../store/languageStore';
-import { getCartLines, getSubtotal } from '../utils/cart';
+import { getCartLines, getSubtotal, cartSelection, cartCatalogChanged } from '../utils/cart';
 import { formatPrice } from '../utils/formatters';
 import type { Address, DeliveryType, PaymentMethod } from '../types/commerce';
 
@@ -62,6 +70,13 @@ export function CheckoutPage() {
   const navigate = useNavigate();
   const language = useLanguageStore((state) => state.language);
   const token = useAuthStore((state) => state.accessToken);
+  const userId = useAuthStore((state) => state.user?.id);
+  const userPhone = useAuthStore((state) => state.user?.phone);
+  const phoneScope = token ? `user:${userId}` : 'guest';
+  const savedPhone = token ? (normalizePhoneNumber(userPhone) ?? '') : readGuestPhone();
+  const [phoneEntry, setPhoneEntry] = useState({ scope: '', value: '' });
+  const phone = phoneEntry.scope === phoneScope ? phoneEntry.value : savedPhone;
+  const [phoneError, setPhoneError] = useState(false);
   const authStatus = useAuthStore((state) => state.status);
   const entries = useCartStore((state) => state.entries);
   const clear = useCartStore((state) => state.clear);
@@ -80,6 +95,8 @@ export function CheckoutPage() {
   const [addressLoadError, setAddressLoadError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const submitRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => submitRequest.current?.abort(), []);
   const selectedAddress = addresses.find((item) => item.id === selectedAddressId) ?? null;
   const pickup = PICKUP_POINTS.find((item) => item.id === pickupId) ?? null;
   const deliveryFee = deliveryType === 'DELIVERY' ? DELIVERY_FEE_KZT : 0;
@@ -91,8 +108,7 @@ export function CheckoutPage() {
   const sessionReady = authStatus === 'guest' || authStatus === 'authenticated';
   const canSubmit =
     sessionReady &&
-    minimumReached &&
-    !unavailable &&
+    ((minimumReached && !unavailable) || hasPendingOrderAttempt(phoneScope)) &&
     (deliveryType === 'DELIVERY' ? !loadingAddresses && addressValid : !!pickup);
 
   useEffect(() => {
@@ -160,20 +176,23 @@ export function CheckoutPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (submitting || !sessionReady || (deliveryType === 'DELIVERY' && loadingAddresses)) {
+    if (
+      submitting ||
+      submitRequest.current ||
+      !sessionReady ||
+      (deliveryType === 'DELIVERY' && loadingAddresses)
+    ) {
       return;
     }
     setError('');
+    const recipientPhone = normalizePhoneNumber(phone);
+    if (!recipientPhone) {
+      setPhoneError(true);
+      setError(t('checkout.phoneInvalid'));
+      return;
+    }
     if (!entries.length) {
       setError(t('checkout.cartEmpty'));
-      return;
-    }
-    if (unavailable) {
-      setError(t('checkout.unavailable'));
-      return;
-    }
-    if (!minimumReached) {
-      setError(t('checkout.minimumError', { amount: formatPrice(MINIMUM_ORDER_KZT, language) }));
       return;
     }
     if (deliveryType === 'DELIVERY' && !addressValid) {
@@ -198,15 +217,66 @@ export function CheckoutPage() {
     const savedAddressComment =
       deliveryType === 'DELIVERY' && !draftMode ? selectedAddress?.comment?.trim() : undefined;
     const payload = {
+      recipientPhone,
       deliveryType,
       paymentMethod,
       address,
       comment: comment.trim() || savedAddressComment || undefined,
-      items: entries.map(({ productId, quantity }) => ({ productId, quantity })),
+      items: entries.map(({ productId, quantity }) => ({
+        productId,
+        quantity,
+        expectedUnitPrice: products.find((product) => product.id === productId)?.price ?? 0,
+      })),
     };
+    const controller = new AbortController();
+    submitRequest.current = controller;
     setSubmitting(true);
+    let posting = false;
     try {
-      const order = token ? await createOrder(token, payload) : await createGuestOrder(payload);
+      // An ambiguous previous POST must reach the server with the same key,
+      // even when a product has since disappeared from the catalog.
+      if (!hasPendingOrderAttempt(phoneScope, payload)) {
+        const fresh = await getProducts(controller.signal);
+        if (controller.signal.aborted) {
+          return;
+        }
+        if (cartSelection(useCartStore.getState().entries) !== cartSelection(entries)) {
+          setError(t('checkout.cartUpdated'));
+          return;
+        }
+        const freshLines = getCartLines(entries, fresh);
+        useCatalogStore.setState({ products: fresh });
+        if (freshLines.some((line) => !line.product)) {
+          setError(t('checkout.unavailable'));
+          return;
+        }
+        if (cartCatalogChanged(lines, freshLines)) {
+          setError(t('checkout.cartUpdated'));
+          return;
+        }
+        if (getSubtotal(freshLines) < MINIMUM_ORDER_KZT) {
+          setError(
+            t('checkout.minimumError', { amount: formatPrice(MINIMUM_ORDER_KZT, language) }),
+          );
+          return;
+        }
+      }
+      if (
+        controller.signal.aborted ||
+        useAuthStore.getState().accessToken !== token ||
+        cartSelection(useCartStore.getState().entries) !== cartSelection(entries)
+      ) {
+        return;
+      }
+      const idempotencyKey = getOrderAttemptKey(phoneScope, payload);
+      const orderInput = { ...payload, idempotencyKey };
+      posting = true;
+      const order = token
+        ? await createOrder(token, orderInput, controller.signal)
+        : await createGuestOrder(orderInput, controller.signal);
+      if (controller.signal.aborted) {
+        return;
+      }
       let guestOrderPersisted = true;
       if (!token) {
         if (!order.guestToken) {
@@ -217,19 +287,60 @@ export function CheckoutPage() {
           guestToken: order.guestToken,
         });
       }
+      if (!token) {
+        saveGuestPhone(recipientPhone);
+      } else {
+        const current = useAuthStore.getState();
+        if (current.user && current.user.id === userId && current.accessToken === token) {
+          useAuthStore.setState({ user: { ...current.user, phone: recipientPhone } });
+        }
+      }
       clear();
+      clearOrderAttemptKey(idempotencyKey);
       navigate(token ? `/orders/${order.id}` : `/guest-orders/${order.id}`, {
         replace: true,
         state: { justCreated: true, guestOrderPersisted },
       });
     } catch (cause) {
+      if (controller.signal.aborted) {
+        return;
+      }
+      if (cause instanceof ApiError && cause.status === 409 && cause.code === 'CART_CHANGED') {
+        try {
+          const fresh = await getProducts(controller.signal);
+          if (!controller.signal.aborted) {
+            useCatalogStore.setState({ products: fresh });
+            setError(
+              t(
+                getCartLines(entries, fresh).some((line) => !line.product)
+                  ? 'checkout.unavailable'
+                  : 'checkout.cartUpdated',
+              ),
+            );
+          }
+        } catch {
+          if (!controller.signal.aborted) {
+            setError(t('checkout.catalogRefreshError'));
+          }
+        }
+        return;
+      }
       setError(
-        cause instanceof ApiError && cause.status === 400
-          ? t('checkout.serverValidation')
-          : t('checkout.orderError'),
+        !posting
+          ? t('checkout.catalogRefreshError')
+          : cause instanceof ApiError && cause.status === 429
+            ? t('checkout.rateLimited')
+            : cause instanceof ApiError && cause.status === 400
+              ? t('checkout.serverValidation')
+              : t('checkout.orderError'),
       );
     } finally {
-      setSubmitting(false);
+      if (submitRequest.current === controller) {
+        submitRequest.current = null;
+      }
+      if (!controller.signal.aborted) {
+        setSubmitting(false);
+      }
     }
   };
 
@@ -255,7 +366,7 @@ export function CheckoutPage() {
         className="commerce-layout checkout-layout"
         onSubmit={(event) => void handleSubmit(event)}
       >
-        <div className="checkout-main">
+        <div className="checkout-main" inert={submitting}>
           <section className="panel checkout-section">
             <div className="panel-heading">
               <div>
@@ -417,6 +528,32 @@ export function CheckoutPage() {
                 ))}
               </div>
             )}
+          </section>
+          <section className="panel checkout-section">
+            <h2>{t('checkout.contactTitle')}</h2>
+            <label className="comment-field" htmlFor="recipient-phone">
+              {t('checkout.phone')}
+              <input
+                id="recipient-phone"
+                type="tel"
+                autoComplete="tel"
+                inputMode="tel"
+                maxLength={32}
+                placeholder="+7 (701) 123-45-67"
+                required
+                value={phone}
+                aria-invalid={phoneError}
+                aria-describedby="recipient-phone-hint"
+                onChange={(event) => {
+                  setPhoneEntry({ scope: phoneScope, value: event.target.value });
+                  setPhoneError(false);
+                }}
+                onBlur={() => setPhoneError(Boolean(phone) && !normalizePhoneNumber(phone))}
+              />
+            </label>
+            <p id="recipient-phone-hint" className={phoneError ? 'inline-error' : 'muted'}>
+              {t(phoneError ? 'checkout.phoneInvalid' : 'checkout.phoneHint')}
+            </p>
           </section>
           <CheckoutPayment
             paymentMethod={paymentMethod}

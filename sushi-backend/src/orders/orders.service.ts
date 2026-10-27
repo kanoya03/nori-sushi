@@ -1,17 +1,20 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 
 import { PrismaService } from '../prisma/prisma.service.js';
 
 import { CreateOrderDto } from './dto/create-order.dto.js';
+import { validateCreateOrder } from './validate-create-order.js';
 
 const MINIMUM_ORDER_AMOUNT = 5000;
 const DELIVERY_FEE = 700;
+const MAX_ORDER_TOTAL = 2_147_483_647;
 
 @Injectable()
 export class OrdersService {
@@ -38,35 +41,11 @@ export class OrdersService {
   private async buildOrderData(
     dto: CreateOrderDto,
   ) {
-    if (!dto.items.length) {
-      throw new BadRequestException(
-        'Order must contain at least one item',
-      );
-    }
-
-    if (
-      dto.deliveryType ===
-        'DELIVERY' &&
-      !dto.address?.trim()
-    ) {
-      throw new BadRequestException(
-        'Delivery address is required',
-      );
-    }
-
-    if (
-      dto.deliveryType ===
-        'PICKUP' &&
-      !dto.address?.trim()
-    ) {
-      throw new BadRequestException(
-        'Pickup point is required',
-      );
-    }
+    const validatedDto = validateCreateOrder(dto);
 
     const productIds = [
       ...new Set(
-        dto.items.map(
+        validatedDto.items.map(
           (item) =>
             item.productId,
         ),
@@ -88,22 +67,17 @@ export class OrdersService {
       products.length !==
       productIds.length
     ) {
+      if (validatedDto.items.some((item) => item.expectedUnitPrice !== undefined)) {
+        throw new ConflictException({ statusCode: 409, code: 'CART_CHANGED', message: 'Some products are unavailable. Review your cart.' });
+      }
       throw new BadRequestException(
         'Some products are unavailable',
       );
     }
 
     const orderItems =
-      dto.items.map(
+      validatedDto.items.map(
         (item) => {
-          if (
-            item.quantity < 1
-          ) {
-            throw new BadRequestException(
-              'Quantity must be at least 1',
-            );
-          }
-
           const product =
             products.find(
               (product) =>
@@ -117,6 +91,9 @@ export class OrdersService {
             );
           }
 
+          if (item.expectedUnitPrice !== undefined && item.expectedUnitPrice !== product.price) {
+            throw new ConflictException({ statusCode: 409, code: 'CART_CHANGED', message: 'Product prices changed. Review your cart.' });
+          }
           return {
             productId:
               product.id,
@@ -155,7 +132,7 @@ export class OrdersService {
     }
 
     const deliveryFee =
-      dto.deliveryType ===
+      validatedDto.deliveryType ===
       'DELIVERY'
         ? DELIVERY_FEE
         : 0;
@@ -164,7 +141,12 @@ export class OrdersService {
       subtotal +
       deliveryFee;
 
+    if (!Number.isInteger(totalPrice) || totalPrice > MAX_ORDER_TOTAL) {
+      throw new BadRequestException('Order total is too large');
+    }
+
     return {
+      validatedDto,
       orderItems,
       subtotal,
       deliveryFee,
@@ -172,118 +154,104 @@ export class OrdersService {
     };
   }
 
-  async createOrder(
-    userId: number,
-    dto: CreateOrderDto,
-  ) {
+  private async createOrderRecord(userId: number | null, dto: CreateOrderDto) {
+    const validated = validateCreateOrder(dto);
+    const key = validated.idempotencyKey;
+    const requestHash = key
+      ? createHash('sha256')
+          .update(
+            JSON.stringify({
+              deliveryType: validated.deliveryType,
+              recipientPhone: validated.recipientPhone,
+              paymentMethod: validated.paymentMethod,
+              address: validated.address,
+              comment: validated.comment || null,
+              // Prices are a client precondition, not a new checkout attempt.
+              items: validated.items.map(({ productId, quantity }) => ({ productId, quantity })).sort((a, b) => a.productId - b.productId),
+            }),
+          )
+          .digest('hex')
+      : null;
+
+    const findExisting = async () => {
+      if (!key) return null;
+      const existing = await this.prisma.order.findUnique({
+        where: { idempotencyKey: key },
+        include: { items: { include: { product: true } } },
+      });
+      if (existing && (existing.userId !== userId || existing.requestHash !== requestHash)) {
+        throw new ConflictException('Idempotency key already belongs to another order');
+      }
+      return existing;
+    };
+
+    const existing = await findExisting();
+    if (existing) return existing;
+
     const {
+      validatedDto,
       orderItems,
       subtotal,
       deliveryFee,
       totalPrice,
     } =
-      await this.buildOrderData(
-        dto,
-      );
+      await this.buildOrderData(validated);
 
-    return this.prisma.order.create({
-      data: {
-        userId,
-
-        guestToken: null,
-
-        deliveryType:
-          dto.deliveryType,
-
-        paymentMethod:
-          dto.paymentMethod,
-
-        address:
-          dto.address?.trim() ||
-          null,
-
-        comment:
-          dto.comment?.trim() ||
-          null,
-
-        subtotal,
-
-        deliveryFee,
-
-        totalPrice,
-
-        items: {
-          create:
-            orderItems,
-        },
-      },
-
-      include: {
-        items: {
-          include: {
-            product: true,
+    try {
+      const orderArgs = {
+        data: {
+          userId,
+          guestToken: userId === null ? randomUUID() : null,
+          idempotencyKey: key || null,
+          requestHash,
+          recipientPhone: validatedDto.recipientPhone,
+          deliveryType: validatedDto.deliveryType,
+          paymentMethod: validatedDto.paymentMethod,
+          address: validatedDto.address || null,
+          comment: validatedDto.comment || null,
+          subtotal,
+          deliveryFee,
+          totalPrice,
+          items: {
+            create: orderItems,
           },
         },
-      },
-    });
+        include: {
+          items: {
+            include: {
+              product: true as const,
+            },
+          },
+        },
+      };
+      if (userId === null) return await this.prisma.order.create(orderArgs);
+      return await this.prisma.$transaction(async (tx) => {
+        const order = await tx.order.create(orderArgs);
+        await tx.user.update({ where: { id: userId }, data: { phone: validatedDto.recipientPhone } });
+        return order;
+      });
+    } catch (error) {
+      // The unique index arbitrates two requests that arrive at the same time.
+      if (
+        key &&
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'P2002'
+      ) {
+        const winner = await findExisting();
+        if (winner) return winner;
+      }
+      throw error;
+    }
   }
 
-  async createGuestOrder(
-    dto: CreateOrderDto,
-  ) {
-    const {
-      orderItems,
-      subtotal,
-      deliveryFee,
-      totalPrice,
-    } =
-      await this.buildOrderData(
-        dto,
-      );
+  async createOrder(userId: number, dto: CreateOrderDto) {
+    return this.createOrderRecord(userId, dto);
+  }
 
-    const guestToken =
-      randomUUID();
-
-    return this.prisma.order.create({
-      data: {
-        userId: null,
-
-        guestToken,
-
-        deliveryType:
-          dto.deliveryType,
-
-        paymentMethod:
-          dto.paymentMethod,
-
-        address:
-          dto.address?.trim() ||
-          null,
-
-        comment:
-          dto.comment?.trim() ||
-          null,
-
-        subtotal,
-
-        deliveryFee,
-
-        totalPrice,
-
-        items: {
-          create:
-            orderItems,
-        },
-      },
-
-      include: {
-        items: {
-          include: {
-            product: true,
-          },
-        },
-      },
-    });
+  async createGuestOrder(dto: CreateOrderDto) {
+    return this.createOrderRecord(null, dto);
   }
 
   async getOrders(

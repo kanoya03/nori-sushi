@@ -43,6 +43,7 @@ export type OrderItem = {
 };
 
 export type Order = {
+  recipientPhone?: string | null;
   id: number;
   userId: number | null;
   guestToken?: string | null;
@@ -60,9 +61,11 @@ export type Order = {
 };
 
 export type CreateOrderInput = {
+  recipientPhone: string;
+  idempotencyKey: string;
   deliveryType: DeliveryType;
   paymentMethod: PaymentMethod;
   address: string;
   comment?: string;
-  items: Array<{ productId: number; quantity: number }>;
+  items: Array<{ productId: number; quantity: number; expectedUnitPrice: number }>;
 };

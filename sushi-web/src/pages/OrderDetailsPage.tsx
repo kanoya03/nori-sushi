@@ -253,6 +253,12 @@ function OrderDetails({ id, token, guest }: Props) {
                 <dd>{order.comment}</dd>
               </div>
             )}
+            {order.recipientPhone && (
+              <div>
+                <dt>{t('checkout.phone')}</dt>
+                <dd>{order.recipientPhone}</dd>
+              </div>
+            )}
           </dl>
           <div className="order-detail-actions">
             {canCancel && (

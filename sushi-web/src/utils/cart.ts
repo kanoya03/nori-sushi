@@ -57,3 +57,22 @@ export function getCartLines(entries: CartEntry[], products: Product[]): CartLin
 export function getSubtotal(lines: CartLine[]): number {
   return lines.reduce((total, line) => total + (line.product?.price ?? 0) * line.quantity, 0);
 }
+
+export function cartSelection(entries: CartEntry[]): string {
+  return JSON.stringify(
+    entries.map((entry) => [entry.productId, entry.quantity]).sort((a, b) => a[0] - b[0]),
+  );
+}
+
+export function cartCatalogChanged(previous: CartLine[], fresh: CartLine[]): boolean {
+  return previous.some((line, i) => {
+    const before = line.product;
+    const after = fresh[i]?.product;
+    if (!before || !after) {
+      return before !== after;
+    }
+    return ['price', 'name', 'nameEn', 'weight', 'description', 'descriptionEn'].some(
+      (key) => before[key as keyof Product] !== after[key as keyof Product],
+    );
+  });
+}

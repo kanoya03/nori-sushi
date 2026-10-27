@@ -173,6 +173,15 @@ const resources = {
       },
 
       checkout: {
+        reviewCart: 'Проверьте заказ',
+        cartUpdated: 'Цены или состав корзины изменились. Проверьте обновлённый заказ и подтвердите его ещё раз.',
+        cartUnavailable: 'Некоторые блюда больше недоступны. Вернитесь в корзину и удалите их перед оформлением.',
+        itemUnavailable: 'Недоступно',
+        catalogRefreshError: 'Не удалось проверить актуальные цены и наличие блюд. Заказ не отправлен. Попробуйте ещё раз.',
+        contactTitle: 'Контакт получателя',
+        phone: 'Номер телефона',
+        phoneHint: 'Номер с кодом страны, например +7 701 123-45-67. Запомним для следующего заказа.',
+        phoneInvalid: 'Введите корректный номер телефона с + и кодом страны.',
         title:
           'Оформление заказа',
 
@@ -245,6 +254,7 @@ const resources = {
 
         orderError:
           'Не удалось оформить заказ',
+        rateLimited: 'Заказы отправляются слишком часто. Подождите несколько минут. Корзина сохранена.',
       },
 
       orderSuccess: {
@@ -480,9 +490,15 @@ const resources = {
 
         telegramError:
           'Не удалось открыть Telegram',
+        rateLimited: 'Слишком много попыток входа. Подождите несколько минут и попробуйте снова.',
+        telegramLocked: 'После пяти неверных попыток код заблокирован. Начните вход заново с новым кодом.',
 
         sessionNotFound:
           'Сессия авторизации не найдена',
+        restoringSession: 'Восстанавливаем вход…',
+        restoreError: 'Не удалось проверить вход. Аккаунт сохранён. Проверьте интернет и попробуйте снова.',
+        retrySession: 'Повторить',
+        continueAsGuest: 'Выйти и продолжить как гость',
 
         codeLength:
           'Введите 6-значный код',
@@ -864,6 +880,15 @@ const resources = {
       },
 
       checkout: {
+        reviewCart: 'Review your order',
+        cartUpdated: 'Prices or cart contents changed. Review the updated order and confirm again.',
+        cartUnavailable: 'Some dishes are no longer available. Return to your cart and remove them before checkout.',
+        itemUnavailable: 'Unavailable',
+        catalogRefreshError: 'We could not check current prices and availability. Your order was not submitted. Try again.',
+        contactTitle: 'Recipient contact',
+        phone: 'Phone number',
+        phoneHint: 'Include the country code, for example +7 701 123-45-67. We will remember it for your next order.',
+        phoneInvalid: 'Enter a valid phone number starting with + and the country code.',
         title: 'Checkout',
 
         receivingMethod:
@@ -935,6 +960,7 @@ const resources = {
 
         orderError:
           'Could not place the order',
+        rateLimited: 'Orders are being submitted too often. Wait a few minutes. Your cart is saved.',
       },
 
       orderSuccess: {
@@ -1172,9 +1198,15 @@ const resources = {
 
         telegramError:
           'Could not open Telegram',
+        rateLimited: 'Too many sign-in attempts. Wait a few minutes and try again.',
+        telegramLocked: 'This code was locked after five incorrect attempts. Start again with a new code.',
 
         sessionNotFound:
           'Authorization session was not found',
+        restoringSession: 'Restoring your session…',
+        restoreError: 'We could not verify your session. Your account is saved. Check your connection and retry.',
+        retrySession: 'Retry',
+        continueAsGuest: 'Sign out and continue as a guest',
 
         codeLength:
           'Enter the 6-digit code',

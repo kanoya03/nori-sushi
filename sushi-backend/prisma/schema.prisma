@@ -74,6 +74,7 @@ model User {
   // Only a verified Google identity may set the sign-in email.
   email        String? @unique
   contactEmail String?
+  phone        String?
 
   telegramId String? @unique
   googleId   String? @unique
@@ -95,8 +96,19 @@ model TelegramAuthSession {
 
   expiresAt DateTime
   verified  Boolean @default(false)
+  failedAttempts Int @default(0)
 
   createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+model RequestRateLimit {
+  key       String   @id
+  count     Int
+  expiresAt DateTime
+
+  @@index([expiresAt])
 }
 
 model Favorite {
@@ -145,6 +157,10 @@ model Order {
   user   User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   guestToken String? @unique
+
+  idempotencyKey String? @unique
+  requestHash    String?
+  recipientPhone String?
 
   status OrderStatus @default(PENDING)
 

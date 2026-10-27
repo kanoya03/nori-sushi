@@ -157,6 +157,18 @@ export const styles =
     fontSize: 15,
     textAlignVertical: 'top',
     },
+    phoneInput: {
+      marginTop: 10,
+      minHeight: 48,
+      borderWidth: 1,
+      borderColor: '#ccc',
+      borderRadius: 14,
+      paddingHorizontal: 14,
+      backgroundColor: '#fff',
+      fontSize: 16,
+    },
+    phoneInputError: { borderColor: '#b42318' },
+    phoneError: { marginTop: 6, color: '#b42318', fontSize: 13 },
 
     disabledOption: {
     flexDirection: 'row',

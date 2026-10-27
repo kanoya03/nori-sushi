@@ -10,9 +10,10 @@ type AuthState = {
   user: AuthUser | null;
   accessToken: string | null;
   status: 'idle' | 'restoring' | 'guest' | 'authenticating' | 'authenticated' | 'error';
-  error: 'googleFailed' | 'telegramFailed' | 'network' | null;
+  error: 'googleFailed' | 'telegramFailed' | 'network' | 'rateLimited' | 'telegramLocked' | null;
   expired: boolean;
   storageError: boolean;
+  clearError: () => void;
   restore: () => Promise<void>;
   signInGoogle: (idToken: string) => Promise<void>;
   signInTelegram: (sessionToken: string, code: string) => Promise<void>;
@@ -57,7 +58,14 @@ export const useAuthStore = create<AuthState>((set, get) => {
       if (version === generation) {
         set({
           status: 'guest',
-          error: error instanceof ApiError && error.status === 401 ? provider : 'network',
+          error:
+            error instanceof ApiError && error.status === 429
+              ? error.code === 'TELEGRAM_SESSION_LOCKED'
+                ? 'telegramLocked'
+                : 'rateLimited'
+              : error instanceof ApiError && error.status === 401
+                ? provider
+                : 'network',
         });
       }
     }
@@ -69,6 +77,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
     error: null,
     expired: false,
     storageError: false,
+    clearError: () => set({ error: null }),
     restore: async () => {
       if (!['idle', 'error'].includes(get().status)) {
         return;

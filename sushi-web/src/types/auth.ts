@@ -7,6 +7,7 @@ export type AuthUser = {
   birthDate: string | null;
   email: string | null;
   contactEmail: string | null;
+  phone: string | null;
   telegramId: string | null;
   googleId: string | null;
   createdAt: string;

@@ -1,168 +1,74 @@
 import {
+  HttpException,
   Injectable,
-  OnModuleDestroy,
-  OnModuleInit,
+  Logger,
+  type OnModuleDestroy,
+  type OnModuleInit,
 } from '@nestjs/common';
-
-import {
-  Bot,
-} from 'grammy';
-
-import {
-  randomInt,
-} from 'crypto';
-
-import {
-  PrismaService,
-} from '../prisma/prisma.service.js';
+import { Bot } from 'grammy';
+import { AuthService } from './auth.service.js';
+import { RateLimitService } from '../rate-limit/rate-limit.service.js';
+import { RateLimitExceededException } from '../rate-limit/rate-limit.exception.js';
 
 @Injectable()
-export class TelegramBotService
-  implements
-    OnModuleInit,
-    OnModuleDestroy
-{
+export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   private readonly bot: Bot;
+  private readonly logger = new Logger(TelegramBotService.name);
 
   constructor(
-    private readonly prisma:
-      PrismaService,
+    private readonly auth: AuthService,
+    private readonly limiter: RateLimitService,
   ) {
-    const token =
-      process.env.TELEGRAM_BOT_TOKEN;
-
-    if (!token) {
-      throw new Error(
-        'TELEGRAM_BOT_TOKEN is not configured',
-      );
-    }
-
-    this.bot =
-      new Bot(token);
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    if (!token) throw new Error('TELEGRAM_BOT_TOKEN is not configured');
+    this.bot = new Bot(token);
   }
 
   onModuleInit() {
-    this.bot.command(
-      'start',
-      async (ctx) => {
-        const sessionToken =
-          ctx.match?.trim();
+    this.bot.command('start', async (ctx) => {
+      const from = ctx.from;
+      // Codes must only be sent to the account owner's private chat.
+      if (!from || ctx.chat.type !== 'private') return;
+      try {
+        await this.limiter.consume('telegram-bot', from.id.toString());
+      } catch (error) {
+        // Avoid turning a command flood into a flood of outgoing replies.
+        if (error instanceof RateLimitExceededException) return;
+        this.logger.error('Telegram rate limit check failed');
+        return;
+      }
 
-        if (!sessionToken) {
-          await ctx.reply(
-            'Откройте Telegram через приложение NORI, чтобы получить код для входа.',
-          );
-
-          return;
-        }
-
-        const session =
-          await this.prisma.telegramAuthSession.findUnique({
-            where: {
-              token:
-                sessionToken,
-            },
-          });
-
-        if (
-          !session ||
-          session.expiresAt <
-            new Date() ||
-          session.verified
-        ) {
-          await ctx.reply(
-            'Ссылка для входа недействительна или истекла. Вернитесь в приложение и попробуйте снова.',
-          );
-
-          return;
-        }
-
-        const from =
-          ctx.from;
-
-        if (!from) {
-          await ctx.reply(
-            'Не удалось получить данные Telegram-пользователя.',
-          );
-
-          return;
-        }
-
-        const telegramId =
-          from.id.toString();
-
-        if (
-          session.telegramId &&
-          session.telegramId !==
-            telegramId
-        ) {
-          await ctx.reply(
-            'Эта ссылка уже используется другим Telegram-аккаунтом.',
-          );
-
-          return;
-        }
-
-        const code =
-          randomInt(
-            100000,
-            1000000,
-          ).toString();
-
-        await this.prisma.user.upsert({
-          where: {
-            telegramId,
-          },
-
-          update: {
-            firstName:
-              from.first_name,
-
-            lastName:
-              from.last_name ??
-              null,
-          },
-
-          create: {
-            telegramId,
-
-            firstName:
-              from.first_name,
-
-            lastName:
-              from.last_name ??
-              null,
-          },
-        });
-
-        await this.prisma.telegramAuthSession.update({
-          where: {
-            token:
-              sessionToken,
-          },
-
-          data: {
-            telegramId,
-            code,
-
-            expiresAt:
-              new Date(
-                Date.now() +
-                  5 * 60 * 1000,
-              ),
-          },
-        });
-
+      const sessionToken = ctx.match?.trim();
+      if (!sessionToken) {
         await ctx.reply(
-          `Ваш код для входа в NORI:\n\n${code}\n\nКод действует 5 минут.`,
+          'Откройте Telegram через приложение NORI, чтобы получить код для входа.',
         );
-      },
-    );
+        return;
+      }
+      try {
+        const { code } = await this.auth.issueTelegramCode(sessionToken, from);
+        await ctx.reply(
+          `Ваш код для входа в NORI:\n\n${code}\n\nКод действует до 5 минут с момента первой выдачи.`,
+        );
+      } catch (error) {
+        if (error instanceof HttpException) {
+          await ctx.reply(
+            'Ссылка недействительна, истекла или заблокирована. Начните вход заново в NORI.',
+          );
+          return;
+        }
+        this.logger.error('Failed to issue Telegram sign-in code');
+        await ctx.reply('Не удалось выдать код. Попробуйте позже.');
+      }
+    });
 
-    this.bot.start();
+    this.bot.catch(() => this.logger.error('Telegram bot request failed'));
+    void this.bot
+      .start()
+      .catch(() => this.logger.error('Telegram bot polling failed'));
   }
 
   onModuleDestroy() {
-    this.bot.stop();
+    if (this.bot.isRunning()) void this.bot.stop();
   }
 }

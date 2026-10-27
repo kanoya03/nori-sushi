@@ -5,9 +5,11 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { TelegramBotService } from './telegram-bot.service.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
+import { RateLimitModule } from '../rate-limit/rate-limit.module.js';
 
 @Module({
   imports: [
+    RateLimitModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: {

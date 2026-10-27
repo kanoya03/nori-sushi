@@ -10,6 +10,7 @@ const user = {
   birthDate: null,
   email: null,
   contactEmail: 'nori@example.test',
+  phone: '+77011234567',
   telegramId: '42',
   googleId: null,
   createdAt: '2026-01-10T00:00:00.000Z',
@@ -32,6 +33,7 @@ const address = {
   updatedAt: '2026-01-10T00:00:00.000Z',
 };
 const makeOrder = (guest = false) => ({
+  recipientPhone: '+77011234567',
   id: 71,
   userId: guest ? null : 42,
   ...(guest ? { guestToken: 'guest-secret' } : {}),
@@ -73,6 +75,9 @@ async function baseApi(page: Page) {
   );
   await page.addInitScript(() => {
     localStorage.setItem('nori-web-cart', JSON.stringify([{ productId: 1, quantity: 2 }]));
+    if (!localStorage.getItem('nori-web-guest-phone')) {
+      localStorage.setItem('nori-web-guest-phone', '+77011234567');
+    }
   });
 }
 async function seedAuth(page: Page) {
@@ -80,6 +85,44 @@ async function seedAuth(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => baseApi(page));
+
+test('recipient phone is validated and remembered for the next guest order', async ({ page }) => {
+  let posted: Record<string, unknown> | undefined;
+  await page.route(`${api}/orders/guest`, async (route) => {
+    posted = route.request().postDataJSON();
+    await route.fulfill({ json: { ...makeOrder(true), recipientPhone: posted?.recipientPhone } });
+  });
+  await page.route(`${api}/orders/guest/71?**`, (route) =>
+    route.fulfill({ json: makeOrder(true) }),
+  );
+  await page.goto('/checkout');
+  await page.getByLabel('Street').fill('Via Torino');
+  await page.getByLabel('House').fill('12');
+  await page.getByLabel('Phone number', { exact: true }).fill('+7123');
+  await page.getByRole('button', { name: 'Place order' }).click();
+  await expect(page.getByRole('alert')).toContainText('Enter a valid phone number');
+  expect(posted).toBeUndefined();
+  await page.getByLabel('Phone number', { exact: true }).fill('+39 (333) 123-4567');
+  await page.getByRole('button', { name: 'Place order' }).click();
+  await expect(page).toHaveURL(/guest-orders\/71$/);
+  expect(posted?.recipientPhone).toBe('+393331234567');
+  expect(await page.evaluate(() => localStorage.getItem('nori-web-guest-phone'))).toBe(
+    '+393331234567',
+  );
+  await page.goto('/checkout');
+  await expect(page.getByLabel('Phone number', { exact: true })).toHaveValue('+393331234567');
+});
+
+test('an account uses its saved phone and does not inherit the guest phone', async ({ page }) => {
+  await seedAuth(page);
+  await page.goto('/checkout');
+  await expect(page.getByLabel('Phone number', { exact: true })).toHaveValue('+77011234567');
+  await page.route(`${api}/auth/me`, (route) =>
+    route.fulfill({ json: { ...user, id: 43, phone: null } }),
+  );
+  await page.reload();
+  await expect(page.getByLabel('Phone number', { exact: true })).toHaveValue('');
+});
 
 test('guest delivery submits a backend-priced order, stores its private reference and clears cart only on success', async ({
   page,
@@ -114,6 +157,157 @@ test('guest delivery submits a backend-priced order, stores its private referenc
   await expect(
     page.getByRole('status').filter({ hasText: 'Order placed successfully' }),
   ).toBeVisible();
+});
+
+test('guest retry after a failed response reuses the same order key after reload', async ({
+  page,
+}) => {
+  const posted: Array<Record<string, unknown>> = [];
+  await page.route(`${api}/orders/guest`, async (route) => {
+    posted.push(route.request().postDataJSON());
+    if (posted.length === 1) {
+      await route.fulfill({ status: 503, json: { message: 'Response lost' } });
+    } else {
+      await route.fulfill({ json: makeOrder(true) });
+    }
+  });
+  await page.route(`${api}/orders/guest/71?**`, (route) =>
+    route.fulfill({ json: makeOrder(true) }),
+  );
+  await page.goto('/checkout');
+  await page.getByLabel('Street').fill('Via Torino');
+  await page.getByLabel('House').fill('12');
+  await page.getByRole('button', { name: 'Place order' }).click();
+  await expect(page).toHaveURL(/checkout$/);
+  await expect.poll(() => posted.length).toBe(1);
+  expect(await page.evaluate(() => localStorage.getItem('nori-web-cart'))).not.toBe('[]');
+
+  await page.route(`${api}/products`, (route) => route.fulfill({ json: [] }));
+  await page.reload();
+  await page.getByLabel('Street').fill('Via Torino');
+  await page.getByLabel('House').fill('12');
+  await page.getByRole('button', { name: 'Place order' }).click();
+  await expect(page).toHaveURL(/guest-orders\/71$/);
+  expect(posted).toHaveLength(2);
+  expect(posted[0].idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
+  expect(posted[1].idempotencyKey).toBe(posted[0].idempotencyKey);
+});
+
+test('changed prices require another confirmation before an order is submitted', async ({
+  page,
+}) => {
+  let posted: Record<string, unknown> | undefined;
+  await page.route(`${api}/orders/guest`, async (route) => {
+    posted = route.request().postDataJSON();
+    await route.fulfill({ json: makeOrder(true) });
+  });
+  await page.route(`${api}/orders/guest/71?**`, (route) =>
+    route.fulfill({ json: makeOrder(true) }),
+  );
+  await page.goto('/checkout');
+  await page.getByLabel('Street').fill('Via Torino');
+  await page.getByLabel('House').fill('12');
+  await page.route(`${api}/products`, (route) =>
+    route.fulfill({
+      json: products.map((product) => (product.id === 1 ? { ...product, price: 4600 } : product)),
+    }),
+  );
+  await page.getByRole('button', { name: 'Place order' }).click();
+  await expect(page.getByRole('alert')).toContainText('Prices or cart contents changed');
+  expect(posted).toBeUndefined();
+  await page.getByRole('button', { name: 'Place order' }).click();
+  await expect(page).toHaveURL(/guest-orders\/71$/);
+  expect(posted?.items).toEqual([{ productId: 1, quantity: 2, expectedUnitPrice: 4600 }]);
+});
+
+test('failed catalog refresh preserves the cart and does not submit an order', async ({ page }) => {
+  let orders = 0;
+  await page.route(`${api}/orders/guest`, (route) => {
+    orders++;
+    return route.fulfill({ json: makeOrder(true) });
+  });
+  await page.goto('/checkout');
+  await page.getByLabel('Street').fill('Via Torino');
+  await page.getByLabel('House').fill('12');
+  await page.route(`${api}/products`, (route) => route.abort());
+  await page.getByRole('button', { name: 'Place order' }).click();
+  await expect(page.getByRole('alert')).toContainText('could not check current prices');
+  expect(orders).toBe(0);
+  expect(await page.evaluate(() => localStorage.getItem('nori-web-cart'))).not.toBe('[]');
+});
+
+test('a dish removed during checkout is preserved for review and blocks the order', async ({
+  page,
+}) => {
+  let orders = 0;
+  await page.route(`${api}/orders/guest`, (route) => {
+    orders++;
+    return route.fulfill({ json: makeOrder(true) });
+  });
+  await page.goto('/checkout');
+  await page.getByLabel('Street').fill('Via Torino');
+  await page.getByLabel('House').fill('12');
+  await page.route(`${api}/products`, (route) =>
+    route.fulfill({ json: products.filter((product) => product.id !== 1) }),
+  );
+  await page.getByRole('button', { name: 'Place order' }).click();
+  await expect(page.getByRole('alert')).toContainText('Remove unavailable dishes');
+  expect(orders).toBe(0);
+  expect(await page.evaluate(() => localStorage.getItem('nori-web-cart'))).toContain(
+    '"productId":1',
+  );
+});
+
+test('a server price conflict refreshes the cart and keeps the attempt key', async ({ page }) => {
+  const posted: Array<{ idempotencyKey: string; items: Array<{ expectedUnitPrice: number }> }> = [];
+  let changed = false;
+  await page.route(`${api}/products`, (route) =>
+    route.fulfill({
+      json: products.map((product) =>
+        changed && product.id === 1 ? { ...product, price: 4600 } : product,
+      ),
+    }),
+  );
+  await page.route(`${api}/orders/guest`, (route) => {
+    posted.push(route.request().postDataJSON());
+    changed = true;
+    return route.fulfill(
+      posted.length === 1
+        ? { status: 409, json: { message: 'Prices changed', code: 'CART_CHANGED' } }
+        : { json: makeOrder(true) },
+    );
+  });
+  await page.route(`${api}/orders/guest/71?**`, (route) =>
+    route.fulfill({ json: makeOrder(true) }),
+  );
+  await page.goto('/checkout');
+  await page.getByLabel('Street').fill('Via Torino');
+  await page.getByLabel('House').fill('12');
+  await page.getByRole('button', { name: 'Place order' }).click();
+  await expect(page.getByRole('alert')).toContainText('Prices or cart contents changed');
+  await page.getByRole('button', { name: 'Place order' }).click();
+  await expect(page).toHaveURL(/guest-orders\/71$/);
+  expect(posted).toHaveLength(2);
+  expect(posted[0].idempotencyKey).toBe(posted[1].idempotencyKey);
+  expect(posted[1].items[0].expectedUnitPrice).toBe(4600);
+});
+
+test('order rate limit keeps the cart and explains when to retry', async ({ page }) => {
+  await page.route(`${api}/orders/guest`, (route) =>
+    route.fulfill({
+      status: 429,
+      json: { message: 'Too many requests', code: 'RATE_LIMITED', retryAfter: 60 },
+    }),
+  );
+  await page.goto('/checkout');
+  await page.getByLabel('Street').fill('Via Torino');
+  await page.getByLabel('House').fill('12');
+  await page.getByRole('button', { name: 'Place order' }).click();
+  await expect(page.getByRole('alert')).toContainText('Orders are being submitted too often');
+  expect(await page.evaluate(() => localStorage.getItem('nori-web-cart'))).not.toBe('[]');
+  expect(
+    await page.evaluate(() => sessionStorage.getItem('nori-web-order-attempt')),
+  ).not.toBeNull();
 });
 
 test('pickup requires and submits one of the mobile pickup points with zero delivery fee', async ({

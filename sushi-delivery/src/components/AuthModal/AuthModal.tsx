@@ -31,6 +31,7 @@ import {
   startTelegramAuth,
   verifyTelegramCode,
 } from '../../api/authApi';
+import { ApiError } from '../../api/client';
 
 import {
   useAuthStore,
@@ -256,7 +257,7 @@ export const AuthModal = ({
 
         setError(
           t(
-            'auth.googleError'
+            error instanceof ApiError && error.status === 429 ? 'auth.rateLimited' : 'auth.googleError'
           )
         );
       } finally {
@@ -307,7 +308,7 @@ export const AuthModal = ({
 
         setError(
           t(
-            'auth.telegramError'
+            error instanceof ApiError && error.status === 429 ? 'auth.rateLimited' : 'auth.telegramError'
           )
         );
       } finally {
@@ -370,7 +371,9 @@ export const AuthModal = ({
 
         setError(
           t(
-            'auth.invalidCode'
+            error instanceof ApiError && error.status === 429
+              ? error.code === 'TELEGRAM_SESSION_LOCKED' ? 'auth.telegramLocked' : 'auth.rateLimited'
+              : 'auth.invalidCode'
           )
         );
       } finally {
